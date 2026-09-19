@@ -1,0 +1,28 @@
+# Local sync state — contains your own measurement timestamps
+.synced.json
+
+# Credentials / cached Garmin OAuth tokens
+.env
+.garminconnect/
+
+# CSV exports (your health data — keep these out of git)
+*.csv
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Editors / OS
+.claude/settings.local.json
+.DS_Store
+.idea/
+.vscode/
