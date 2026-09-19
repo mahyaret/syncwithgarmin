@@ -150,13 +150,17 @@ def remote_weights(client, start: str, end: str) -> dict[str, list[float]]:
 
 
 RATE_LIMIT_HELP = """
-Garmin is rate limiting this IP (HTTP 429).
+Every Garmin login route is rate limiting this IP (HTTP 429).
 
-This is not a password problem, and an MFA code cannot clear it -- the limit
-rejects the login before credentials are ever checked. Wait before retrying:
-usually under an hour, occasionally longer. Repeat attempts extend the block.
-Your cached tokens have been left in place, so once the limit clears a normal
-run may authenticate without touching Garmin's login endpoint at all.
+This is not a password problem. Wait before retrying: usually under an hour,
+occasionally longer. Repeat attempts extend the block. Your cached tokens have
+been left in place, so once the limit clears a normal run may authenticate
+without touching Garmin's login endpoint at all.
+
+Note: a "<strategy> returned 429" warning on its own is not fatal --
+garminconnect tries several login routes and only some get limited. If you were
+prompted for an MFA code despite those warnings, the login was progressing and
+the code was worth entering.
 """.strip()
 
 
@@ -232,7 +236,7 @@ def connect(relogin: bool):
     client = Garmin(
         email=email,
         password=password,
-        prompt_mfa=lambda: input("MFA code: "),
+        prompt_mfa=lambda: input("MFA code (Garmin just sent one, check email): "),
     )
     try:
         client.login(tokenstore=str(store))

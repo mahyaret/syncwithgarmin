@@ -78,13 +78,22 @@ Login runs in two passes:
 
 ### `HTTP 429 — rate limited`
 
-Garmin rate-limits login attempts per IP. This is not a credential problem, and an
-MFA code cannot clear it — the limit rejects the request before credentials are
-checked. The script now exits with status 2 and an explanation rather than falling
-through to an MFA prompt that cannot succeed. Wait it out (usually under an hour,
-occasionally longer) and don't retry in a loop, which extends the block. Your cached
-tokens are left intact, so once it clears a normal run may not touch the login
-endpoint at all.
+Garmin rate-limits login attempts per IP. `garminconnect` tries several login routes
+(two mobile, three web) and warns per route, so lines like
+
+```
+mobile+cffi returned 429: ... IP rate limited by Garmin
+mobile+requests returned 429: ... IP rate limited by Garmin
+```
+
+are **not fatal on their own** — a later route often succeeds. In particular, if you
+then get an `MFA code` prompt, Garmin has accepted your password and sent a code;
+enter it. Only when *every* route is limited does the login fail outright, and then
+this script exits with status 2 and an explanation instead of a traceback.
+
+If you do hit that: wait it out (usually under an hour, occasionally longer) and don't
+retry in a loop, which extends the block. Your cached tokens are left intact, so once
+it clears a normal run may not touch the login endpoint at all.
 
 ## Field mapping
 
