@@ -4,6 +4,26 @@ Uploads InBody CSV exports (LookinBody "date,Measurement device.,Weight(lb),..."
 to Garmin Connect as body-composition weigh-ins, via
 [python-garminconnect](https://github.com/cyberjunky/python-garminconnect).
 
+## Exporting your InBody data
+
+In the **InBody** app (the LookinBody-backed one):
+
+1. Open the **Detail** tab from the *Health Report* screen, scroll to the bottom and tap
+   **Data Export**.
+2. Switch the range selector to **Total** to get your whole history (or use **Time Span**
+   and pick start/end dates). It shows how many records matched.
+3. Tap **Export**. The CSV lands in your device's **Downloads** folder, named
+   `InBody-YYYYMMDD.csv`.
+
+Get that file onto the machine running this script (AirDrop, Files, iCloud Drive) and pass
+its path as the `csv` argument.
+
+| 1. Detail → Data Export | 2. Total → Export |
+|---|---|
+| <img src="docs/inbody-export-1-detail.png" alt="InBody Detail tab with Data Export highlighted" width="300"> | <img src="docs/inbody-export-2-dialog.png" alt="InBody Data Export screen with Total selected and Export highlighted" width="300"> |
+
+Personal values are blanked out in the first screenshot.
+
 ## Setup
 
 Requires Python 3.9+.
