@@ -9,7 +9,7 @@ to Garmin Connect as body-composition weigh-ins, via
 Requires Python 3.9+.
 
 ```bash
-git clone https://github.com/<you>/syncwithgarmin.git
+git clone https://github.com/mahyaret/syncwithgarmin.git
 cd syncwithgarmin
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
