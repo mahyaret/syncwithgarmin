@@ -10,6 +10,7 @@ import argparse
 import csv
 import json
 import os
+import shutil
 import sys
 import time
 from dataclasses import dataclass
@@ -148,6 +149,114 @@ def remote_weights(client, start: str, end: str) -> dict[str, list[float]]:
     return existing
 
 
+RATE_LIMIT_HELP = """
+Garmin is rate limiting this IP (HTTP 429).
+
+This is not a password problem, and an MFA code cannot clear it -- the limit
+rejects the login before credentials are ever checked. Wait before retrying:
+usually under an hour, occasionally longer. Repeat attempts extend the block.
+Your cached tokens have been left in place, so once the limit clears a normal
+run may authenticate without touching Garmin's login endpoint at all.
+""".strip()
+
+
+def _snapshot(path: Path) -> Path | None:
+    """Copy the tokenstore aside so a failed re-login can't lose it."""
+    backup = path.with_name(path.name + ".bak")
+    try:
+        if path.is_dir():
+            shutil.copytree(path, backup, dirs_exist_ok=True)
+        else:
+            shutil.copy2(path, backup)
+    except OSError as exc:
+        print(f"! could not back up {path} ({exc})")
+        return None
+    return backup
+
+
+def _restore(path: Path, backup: Path | None) -> None:
+    if backup is None or not backup.exists():
+        return
+    try:
+        if backup.is_dir():
+            shutil.copytree(backup, path, dirs_exist_ok=True)
+        else:
+            shutil.copy2(backup, path)
+        print(f"restored cached tokens in {path}")
+    except OSError as exc:
+        print(f"! could not restore {path} from {backup} ({exc})")
+
+
+def _discard(backup: Path | None) -> None:
+    if backup is None:
+        return
+    if backup.is_dir():
+        shutil.rmtree(backup, ignore_errors=True)
+    else:
+        backup.unlink(missing_ok=True)
+
+
+def connect(relogin: bool):
+    """Log in, preferring cached tokens and never destroying them on failure."""
+    from garminconnect import (
+        Garmin,
+        GarminConnectAuthenticationError,
+        GarminConnectConnectionError,
+        GarminConnectTooManyRequestsError,
+    )
+
+    store = Path(TOKENSTORE).expanduser()
+
+    # Pass 1: cached tokens, deliberately with no credentials. Given a password,
+    # garminconnect treats an API-rejected cache as poisoned and falls back to a
+    # full SSO login -- and that fallback is what trips Garmin's per-IP 429.
+    # With no password it simply reports the failure and leaves the cache alone.
+    if store.exists() and not relogin:
+        try:
+            client = Garmin()
+            client.login(tokenstore=str(store))
+            print(f"Logged in from cached tokens ({store})")
+            return client
+        except GarminConnectTooManyRequestsError:
+            print(f"\n{RATE_LIMIT_HELP}", file=sys.stderr)
+            raise SystemExit(2) from None
+        except Exception as exc:  # noqa: BLE001 - any failure just means "ask for a password"
+            print(f"! cached tokens unusable ({exc})")
+
+    # Pass 2: full credential login. This one can write the tokenstore, so keep
+    # a copy until we know it succeeded.
+    backup = _snapshot(store) if store.exists() else None
+
+    email = os.getenv("GARMIN_EMAIL") or input("Garmin email: ")
+    password = os.getenv("GARMIN_PASSWORD") or getpass("Garmin password: ")
+    client = Garmin(
+        email=email,
+        password=password,
+        prompt_mfa=lambda: input("MFA code: "),
+    )
+    try:
+        client.login(tokenstore=str(store))
+    except GarminConnectTooManyRequestsError:
+        _restore(store, backup)
+        _discard(backup)
+        print(f"\n{RATE_LIMIT_HELP}", file=sys.stderr)
+        raise SystemExit(2) from None
+    except GarminConnectAuthenticationError as exc:
+        _restore(store, backup)
+        _discard(backup)
+        print(f"\nGarmin rejected these credentials: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
+    except GarminConnectConnectionError as exc:
+        _restore(store, backup)
+        _discard(backup)
+        print(f"\nCould not reach Garmin Connect: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
+
+    _discard(backup)
+    print(f"Logged in as {getattr(client, 'display_name', email)}")
+    return client
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("csv", type=Path, help="InBody CSV export")
@@ -167,6 +276,11 @@ def main() -> int:
         help="DELETE existing Garmin weigh-ins on each target date, then re-upload",
     )
     ap.add_argument("--reset-state", action="store_true", help="clear .synced.json")
+    ap.add_argument(
+        "--relogin",
+        action="store_true",
+        help="skip cached tokens and log in with email/password",
+    )
     ap.add_argument("--delay", type=float, default=1.5, help="seconds between uploads")
     args = ap.parse_args()
 
@@ -194,17 +308,7 @@ def main() -> int:
         print("\nDry run. Re-run with --upload to send these to Garmin Connect.")
         return 0
 
-    from garminconnect import Garmin
-
-    email = os.getenv("GARMIN_EMAIL") or input("Garmin email: ")
-    password = os.getenv("GARMIN_PASSWORD") or getpass("Garmin password: ")
-    client = Garmin(
-        email=email,
-        password=password,
-        prompt_mfa=lambda: input("MFA code: "),
-    )
-    client.login(tokenstore=TOKENSTORE)
-    print(f"Logged in as {getattr(client, 'display_name', email)}")
+    client = connect(args.relogin)
 
     skip_dedupe = args.force or args.replace
     state = set() if skip_dedupe else load_state()

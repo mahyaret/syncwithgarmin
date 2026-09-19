@@ -27,7 +27,7 @@ python sync_inbody.py ~/Downloads/InBody-20260901.csv --since 2026-08-01 --uploa
 
 Options: `--since YYYY-MM-DD`, `--limit N` (most recent N), `--per-day last|first|all`,
 `--delay SECONDS` (default 1.5s between uploads),
-`--force` (bypass dedupe), `--reset-state`, `--replace` (see below).
+`--force` (bypass dedupe), `--reset-state`, `--relogin`, `--replace` (see below).
 
 ### Fixing entries already uploaded
 
@@ -40,9 +40,31 @@ so the local state file doesn't skip the rows you want rewritten:
 python sync_inbody.py ~/Downloads/InBody-20260901.csv --replace --reset-state --upload
 ```
 
+## Logging in
+
 Credentials come from `GARMIN_EMAIL` / `GARMIN_PASSWORD` if set, otherwise it prompts.
 MFA is prompted interactively. OAuth tokens are cached in `~/.garminconnect`
 (override with `GARMINTOKENS`) so later runs don't need the password.
+
+Login runs in two passes:
+
+1. **Cached tokens, with no credentials supplied.** This is deliberate — given a
+   password, `garminconnect` treats an API-rejected cache as poisoned and silently
+   falls back to a full SSO login, and that fallback is what trips Garmin's rate
+   limiter. With no password it just reports the failure and leaves the cache alone.
+2. **Email/password**, only if the cache is missing or unusable. The tokenstore is
+   copied aside first and restored if this pass fails, so a bad login can't cost you
+   working tokens. `--relogin` skips pass 1 and goes straight here.
+
+### `HTTP 429 — rate limited`
+
+Garmin rate-limits login attempts per IP. This is not a credential problem, and an
+MFA code cannot clear it — the limit rejects the request before credentials are
+checked. The script now exits with status 2 and an explanation rather than falling
+through to an MFA prompt that cannot succeed. Wait it out (usually under an hour,
+occasionally longer) and don't retry in a loop, which extends the block. Your cached
+tokens are left intact, so once it clears a normal run may not touch the login
+endpoint at all.
 
 ## Field mapping
 
